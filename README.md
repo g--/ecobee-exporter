@@ -73,6 +73,64 @@ scrape_configs:
       - targets: ['ecobee-exporter:9098']
 ```
 
+## Metrics
+
+### Current
+
+* ecobee_actual_temperature (F)
+* ecobee_aux_heat1
+* ecobee_aux_heat2
+* ecobee_aux_heat3
+* ecobee_comp_cool1
+* ecobee_comp_cool2
+* ecobee_currenthvacmode
+    * current_hvac_mode="cool"
+* ecobee_equipment_running
+* ecobee_fan
+* ecobee_fetch_time
+* ecobee_heat_pump1
+* ecobee_heat_pump2
+* ecobee_humidity
+* ecobee_in_use
+* ecobee_occupancy
+* ecobee_target_temperature_max (F)
+* ecobee_target_temperature_min (F)
+* ecobee_temperature (F)
+
+
+### Proposed
+
+All temperatures would have both `_celsius` and `_fahrenheit` suffixes.
+
+
+* ecobee_device_info
+    * name
+    * model
+    * s/n
+* ecobee_exporter_info
+    * version
+* ecobee_outside_temperature_celsius
+* ecobee_sensor_in_use (0 or 1) -- sensor is part of the active comfort setting, ie eligable to be part of the combined temperature
+    * name
+* ecobee_combined_temperature_celsius   -- synthetic temperature ecobee makes by combining sensors of occupied rooms
+* ecobee_sensor_temperature_celsius
+    * name
+* ecobee_occupancy_detected (0 or 1)
+    * name
+* ecobee_equipment_running (0 or 1)
+    * name
+* ecobee_setpoint_cooling_celsius
+* ecobee_setpoint_heating_celsius
+* ecobee_currenthvacmode
+    * current_hvac_mode="cool"
+* ecobee_fetch_time 0.150490171
+* ecobee_humidity
+    * name
+
+Missing:
+* something indicating the system is on hold because windows are open
+* window sensors
+
 ## Development
 
 If you'd like to build this yourself you can clone this repo and run:
