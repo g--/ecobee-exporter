@@ -33,6 +33,9 @@ type eCollector struct {
 
 	// equipment
 	equipmentRunning, auxHeat1, auxHeat2, auxHeat3, compCool1, compCool2, heatPump1, heatPump2, fan *prometheus.Desc
+
+	// oat
+	outsideTempF, outsideTemp *prometheus.Desc
 }
 
 // NewEcobeeCollector returns a new eCollector with the given prefix assigned to all
@@ -123,6 +126,16 @@ func NewEcobeeCollector(c *ecobee.Client, metricPrefix string) *eCollector {
 			"current hvac mode of thermostat",
 			[]string{"thermostat_id", "thermostat_name", "current_hvac_mode"},
 		),
+		outsideTemp: d.new(
+			"outside_temperature",
+			"current outside temperature (Celsius)",
+			runtime,
+		),
+		outsideTempF: d.new(
+			"outside_temperature_fahrenheit",
+			"current outside temperature (Fahrenheit)",
+			runtime,
+		),
 		equipmentRunning: d.new(
 			"equipment_running",
 			"equipment currently running (1 for on, 0 for off)",
@@ -187,6 +200,8 @@ func (c *eCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.occupancy
 	ch <- c.inUse
 	ch <- c.currentHvacMode
+	ch <- c.outsideTemp
+	ch <- c.outsideTempF
 	ch <- c.equipmentRunning
 	ch <- c.auxHeat1
 	ch <- c.auxHeat2
@@ -209,6 +224,14 @@ func is_thing_running(values []int) float64 {
 	return r
 }
 
+func ecobee_temp_in_f(value int) float64 {
+	return float64(value)/10
+}
+
+func ecobee_temp_in_c(value int) float64 {
+	return (float64(value)/10 - 32)*5/9
+}
+
 // Collect retrieves thermostat data via the ecobee API.
 func (c *eCollector) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now()
@@ -228,18 +251,21 @@ func (c *eCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	// https://developer.ecobee.com/home/developer/api/documentation/v1/objects/Thermostat.shtml
 	// https://developer.ecobee.com/home/developer/api/documentation/v1/objects/Weather.shtml
-	//   t.Weather.forecasts[0].temperature
 	for _, t := range tt {
 		tFields := []string{t.Identifier, t.Name}
 		if t.Runtime.Connected {
+			for _, w := range t.Weather.Forecasts {
+				log.Infof("At %q, temp is %fC", w.DateTime, ecobee_temp_in_c(w.Temperature))
+			}
+
 			ch <- prometheus.MustNewConstMetric(
-				c.actualTemperature, prometheus.GaugeValue, float64(t.Runtime.ActualTemperature)/10, tFields...,
+				c.actualTemperature, prometheus.GaugeValue, ecobee_temp_in_f(t.Runtime.ActualTemperature), tFields...,
 			)
 			ch <- prometheus.MustNewConstMetric(
-				c.targetTemperatureMax, prometheus.GaugeValue, float64(t.Runtime.DesiredCool)/10, tFields...,
+				c.targetTemperatureMax, prometheus.GaugeValue, ecobee_temp_in_f(t.Runtime.DesiredCool), tFields...,
 			)
 			ch <- prometheus.MustNewConstMetric(
-				c.targetTemperatureMin, prometheus.GaugeValue, float64(t.Runtime.DesiredHeat)/10, tFields...,
+				c.targetTemperatureMin, prometheus.GaugeValue, ecobee_temp_in_f(t.Runtime.DesiredHeat), tFields...,
 			)
 			ch <- prometheus.MustNewConstMetric(
 				c.currentHvacMode, prometheus.GaugeValue, 0, t.Identifier, t.Name, t.Settings.HvacMode,
@@ -267,6 +293,13 @@ func (c *eCollector) Collect(ch chan<- prometheus.Metric) {
 			)
 			ch <- prometheus.MustNewConstMetric(
 				c.equipmentRunning, prometheus.GaugeValue, is_thing_running(t.ExtendedRuntime.Fan), append(tFields, "fan")...,
+			)
+
+			ch <- prometheus.MustNewConstMetric(
+				c.outsideTempF, prometheus.GaugeValue, ecobee_temp_in_f(t.Weather.Forecasts[0].Temperature), tFields...,
+			)
+			ch <- prometheus.MustNewConstMetric(
+				c.outsideTemp, prometheus.GaugeValue, ecobee_temp_in_c(t.Weather.Forecasts[0].Temperature), tFields...,
 			)
 
 
@@ -307,9 +340,9 @@ func (c *eCollector) Collect(ch chan<- prometheus.Metric) {
 			for _, sc := range s.Capability {
 				switch sc.Type {
 				case "temperature":
-					if v, err := strconv.ParseFloat(sc.Value, 64); err == nil {
+					if v, err := strconv.ParseInt(sc.Value, 10, 64); err == nil {
 						ch <- prometheus.MustNewConstMetric(
-							c.temperature, prometheus.GaugeValue, v/10, sFields...,
+							c.temperature, prometheus.GaugeValue, ecobee_temp_in_f(int(v)), sFields...,
 						)
 					} else {
 						log.Error(err)
